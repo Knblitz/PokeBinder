@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>National Pokédex | Ultimate Collector Binder</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="binder-container">
+        
+        <div class="binder-spine">
+            <div class="hole"></div>
+            <div class="hole"></div>
+            <div class="hole"></div>
+            <div class="hole"></div>
+            <div class="hole"></div>
+        </div>
+
+        <div class="binder-page">
+            
+            <section class="collection-stats">
+                <div class="stat-item">
+                    Standard Dex: <span id="total-caught">0</span> | 
+                    Rare Art Dex: <span id="total-master">0</span> / 1025
+                </div>
+                <div id="gen-stats" class="gen-stats-grid"></div>
+            </section>
+
+            <header>
+                <h1>National Pokédex</h1>
+                
+                <div class="search-controls">
+                    <input type="text" id="search-input" placeholder="Search name or ID...">
+                    
+                    <select id="gen-filter">
+                        <option value="all">All Generations</option>
+                        <option value="1">Gen 1 (Kanto)</option>
+                        <option value="2">Gen 2 (Johto)</option>
+                        <option value="3">Gen 3 (Hoenn)</option>
+                        <option value="4">Gen 4 (Sinnoh)</option>
+                        <option value="5">Gen 5 (Unova)</option>
+                        <option value="6">Gen 6 (Kalos)</option>
+                        <option value="7">Gen 7 (Alola)</option>
+                        <option value="8">Gen 8 (Galar)</option>
+                        <option value="9">Gen 9 (Paldea)</option>
+                    </select>
+
+                    <div class="filter-mode">
+                        <label>
+                            <input type="checkbox" id="missing-rare-toggle"> Missing Rare Art
+                        </label>
+                    </div>
+                </div>
+                
+                <p id="page-num">Connecting to Global Terminal...</p>
+            </header>
+
+            <div id="grid-3x3" class="grid-container">
+                <div class="loader">Synchronizing Binder Slots...</div>
+            </div>
+
+            <div class="footer-controls">
+                <button id="prev-btn" class="nav-btn" disabled>← Previous Page</button>
+                
+                <div class="page-skipper">
+                    <input type="number" id="skip-input" min="1" placeholder="Pg #">
+                    <button id="skip-btn" class="nav-btn">Jump</button>
+                </div>
+
+                <button id="next-btn" class="nav-btn">Next Page →</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
