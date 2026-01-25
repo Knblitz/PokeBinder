@@ -3,77 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>National Pokédex | Ultimate Collector Binder</title>
+    <title>National Dex Binder | Dual-Page Spread</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <div class="binder-container">
-        
-        <div class="binder-spine">
-            <div class="hole"></div>
-            <div class="hole"></div>
-            <div class="hole"></div>
-            <div class="hole"></div>
-            <div class="hole"></div>
-        </div>
-
-        <div class="binder-page">
+        <div class="spread-container">
             
-            <section class="collection-stats">
-                <div class="stat-item">
-                    Standard Dex: <span id="total-caught">0</span> | 
-                    Rare Art Dex: <span id="total-master">0</span> / 1025
-                </div>
-                <div id="gen-stats" class="gen-stats-grid"></div>
-            </section>
-
-            <header>
-                <h1>National Pokédex</h1>
-                
-                <div class="search-controls">
-                    <input type="text" id="search-input" placeholder="Search name or ID...">
+            <div id="auth-modal" class="auth-overlay">
+                <div class="auth-card">
+                    <div class="pokeball-icon"></div>
+                    <h1>TCG National Dex</h1>
+                    <p>Track your collection across all generations.</p>
                     
-                    <select id="gen-filter">
-                        <option value="all">All Generations</option>
-                        <option value="1">Gen 1 (Kanto)</option>
-                        <option value="2">Gen 2 (Johto)</option>
-                        <option value="3">Gen 3 (Hoenn)</option>
-                        <option value="4">Gen 4 (Sinnoh)</option>
-                        <option value="5">Gen 5 (Unova)</option>
-                        <option value="6">Gen 6 (Kalos)</option>
-                        <option value="7">Gen 7 (Alola)</option>
-                        <option value="8">Gen 8 (Galar)</option>
-                        <option value="9">Gen 9 (Paldea)</option>
-                    </select>
+                    <button onclick="handleLogin()" class="login-btn">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google Logo">
+                        Sign in with Google
+                    </button>
 
-                    <div class="filter-mode">
-                        <label>
-                            <input type="checkbox" id="missing-rare-toggle"> Missing Rare Art
+                    <button onclick="continueAsGuest()" class="guest-btn">
+                        Continue as Guest
+                    </button>
+                    
+                    <small>Your progress is saved automatically to the cloud.</small>
+                </div>
+            </div>
+
+            <div class="binder-page left-page">
+                <div id="left-page-content"></div>
+                <div class="page-footer">
+                    <button id="prev-btn" class="nav-btn">← Back</button>
+                    <span id="left-page-num">Page 0</span>
+                </div>
+            </div>
+
+            <div class="binder-spine">
+                <div class="ring"></div>
+                <div class="ring"></div>
+                <div class="ring"></div>
+                <div class="ring"></div>
+                <div class="ring"></div>
+            </div>
+
+            <div class="binder-page right-page">
+                <div class="page-header-controls search-header">
+                    <div class="search-row">
+                        <div class="search-container">
+                            <input type="text" id="search-input" placeholder="Search name, ID, or type..." autocomplete="off">
+                            <div id="suggestion-box" class="suggestion-box"></div>
+                        </div>
+
+                        <select id="gen-filter">
+                            <option value="all">All Generations</option>
+                            <option value="1">Gen 1 (Kanto)</option>
+                            <option value="2">Gen 2 (Johto)</option>
+                            <option value="3">Gen 3 (Hoenn)</option>
+                            <option value="4">Gen 4 (Sinnoh)</option>
+                            <option value="5">Gen 5 (Unova)</option>
+                            <option value="6">Gen 6 (Kalos)</option>
+                            <option value="7">Gen 7 (Alola)</option>
+                            <option value="8">Gen 8 (Galar)</option>
+                            <option value="9">Gen 9 (Paldea)</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-row">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="missing-rare-toggle"> <span>Missing AR+</span>
                         </label>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="caught-only-toggle"> <span>Caught</span>
+                        </label>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="ar-only-toggle"> <span>AR+ Only</span>
+                        </label>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="ghost-mode-toggle" checked> <span>Ghost Mode</span>
+                        </label>
+                        <span id="result-counter"></span>
                     </div>
                 </div>
-                
-                <p id="page-num">Connecting to Global Terminal...</p>
-            </header>
 
-            <div id="grid-3x3" class="grid-container">
-                <div class="loader">Synchronizing Binder Slots...</div>
-            </div>
+                <div id="right-page-content" class="grid-3x3"></div>
 
-            <div class="footer-controls">
-                <button id="prev-btn" class="nav-btn" disabled>← Previous Page</button>
-                
-                <div class="page-skipper">
-                    <input type="number" id="skip-input" min="1" placeholder="Pg #">
-                    <button id="skip-btn" class="nav-btn">Jump</button>
+                <div class="page-footer">
+                    <span id="right-page-num">Page 1</span>
+                    <div class="jump-box">
+                        <input type="number" id="skip-input" value="1" min="1">
+                        <button id="skip-btn">Jump</button>
+                    </div>
+                    <button id="next-btn" class="nav-btn">Next →</button>
                 </div>
-
-                <button id="next-btn" class="nav-btn">Next Page →</button>
             </div>
+
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>

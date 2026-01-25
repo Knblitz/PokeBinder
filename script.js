@@ -1,242 +1,428 @@
-/**
- * National Pokédex Binder - Ultimate Collector Edition
- * Features: Fixed Grid, Dual-Checklist, Rare Art Missing Logic
- */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { 
+    getAuth, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup 
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-let allPokemon = [];      
-let filteredIds = [];    
-let currentPage = 1;
-const perPage = 9;        
-const TOTAL_POKEMON = 1025; 
+// --- 1. FIREBASE CONFIGURATION ---
+const firebaseConfig = {
+    apiKey: "AIzaSyBEaz14NzexfSb0ohg19v0axiucgGm037w",
+    authDomain: "tcgnationaldex.firebaseapp.com",
+    projectId: "tcgnationaldex",
+    storageBucket: "tcgnationaldex.firebasestorage.app",
+    messagingSenderId: "20806052332",
+    appId: "1:20806052332:web:f28b4fd4d7d017d081b8c9"
+};
 
-// Persistence: Load caught and master lists
-let caughtList = JSON.parse(localStorage.getItem('caughtPokemon')) || [];
-let masterList = JSON.parse(localStorage.getItem('masterPokemon')) || []; 
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-document.addEventListener('DOMContentLoaded', () => {
-    // UI Elements
-    const grid = document.getElementById('grid-3x3');
-    const pageInfo = document.getElementById('page-num');
-    const nextBtn = document.getElementById('next-btn');
-    const prevBtn = document.getElementById('prev-btn');
-    const searchInput = document.getElementById('search-input');
-    const genFilter = document.getElementById('gen-filter');
-    const rareToggle = document.getElementById('missing-rare-toggle');
-    const skipInput = document.getElementById('skip-input');
-    const skipBtn = document.getElementById('skip-btn');
+// --- 2. GLOBAL STATE ---
+let allPokemon = [], caughtList = [], artRarePlusList = [];
+let currentUser = null, trainerName = "Trainer", currentSpread = 1;
+const perPage = 9; 
+const perSpread = 18; 
+const TOTAL_COUNT = 1025;
 
-    /**
-     * INITIALIZE: Fetch data and build binder
-     */
-    async function init() {
-        grid.innerHTML = "<div class='loader'>Syncing Master Binder Data...</div>";
-        try {
-            const res = await fetch(`https://pokeapi.co/api/v2/pokemon?limit=${TOTAL_POKEMON}`);
-            const data = await res.json();
-            
-            // Fetch detailed stats/types for all 1025
-            const details = await Promise.all(
-                data.results.map(p => fetch(p.url).then(r => r.json()))
-            );
-            
-            allPokemon = details;
-            filteredIds = allPokemon.map(p => p.id); 
-            
-            updateCollectionDashboard();
-            render(); 
-        } catch (err) {
-            grid.innerHTML = "<div class='error'>Terminal Offline. Check connection.</div>";
-            console.error(err);
+// --- 3. AUTH & SYNC ENGINE ---
+const provider = new GoogleAuthProvider();
+
+window.handleLogin = async () => {
+    const loginBtn = document.querySelector('.login-btn');
+    if(loginBtn) loginBtn.innerText = "Connecting...";
+    
+    try {
+        await signInWithPopup(auth, provider);
+    } catch (error) {
+        console.error("Login Error:", error);
+        alert("Login failed: " + error.message);
+        if(loginBtn) loginBtn.innerText = "Sign in with Google";
+    }
+};
+
+window.continueAsGuest = () => {
+    const authModal = document.getElementById('auth-modal');
+    if(authModal) authModal.style.display = 'none';
+    currentUser = null;
+    trainerName = "Guest Trainer";
+    init();
+};
+
+onAuthStateChanged(auth, async (user) => {
+    const authModal = document.getElementById('auth-modal');
+    
+    if (user) {
+        currentUser = user;
+        if(authModal) authModal.style.display = 'none';
+        
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+            const data = userDoc.data();
+            caughtList = data.caughtList || [];
+            artRarePlusList = data.artRarePlusList || [];
+            trainerName = data.trainerName || user.displayName || "Trainer";
+        } else {
+            trainerName = user.displayName || "New Trainer";
+            await sync(); 
+        }
+        init();
+    } else {
+        if (trainerName !== "Guest Trainer") {
+            if(authModal) authModal.style.display = 'flex';
         }
     }
+});
 
-    /**
-     * RENDER: Draws the 3x3 Grid with Fixed Slot Logic
-     */
-    function render() {
-        grid.innerHTML = "";
-        const start = (currentPage - 1) * perPage;
-        const pageItems = allPokemon.slice(start, start + perPage);
+window.handleLogout = () => {
+    signOut(auth).then(() => {
+        location.reload();
+    });
+};
 
-        pageItems.forEach(p => {
-            const isCaught = caughtList.includes(p.id);
-            const isMaster = masterList.includes(p.id);
-            const isMatch = filteredIds.includes(p.id);
-            const card = document.createElement('div');
-            const mainType = p.types[0].type.name;
-            
-            card.className = `card type-border-${mainType} ${isCaught ? 'caught' : ''} ${isMaster ? 'master-tier' : ''}`;
-            
-            // Fixed Positioning: Invisible but occupies space if filtered out
-            if (!isMatch) {
-                card.style.visibility = "hidden"; 
-                card.style.pointerEvents = "none";
+// --- 4. CORE ENGINE ---
+async function init() {
+    if (allPokemon.length === 0) {
+        const res = await fetch(`https://pokeapi.co/api/v2/pokemon?limit=${TOTAL_COUNT}`);
+        const data = await res.json();
+        allPokemon = data.results.map((p, i) => ({ 
+            id: i + 1, 
+            name: p.name,
+            types: [] 
+        }));
+
+        fetchAllTypesInOrder();
+    }
+    render();
+    setupSearchSuggestions();
+}
+
+async function fetchAllTypesInOrder() {
+    const chunkSize = 50; 
+    for (let i = 0; i < allPokemon.length; i += chunkSize) {
+        const chunk = allPokemon.slice(i, i + chunkSize);
+        await Promise.all(chunk.map(async (poke) => {
+            try {
+                const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${poke.id}`);
+                const data = await res.json();
+                poke.types = data.types
+                    .sort((a, b) => a.slot - b.slot)
+                    .map(t => t.type.name);
+            } catch (e) {
+                console.error(`Failed types for #${poke.id}`);
             }
+        }));
+        render(); 
+    }
+}
 
-            const typeLabels = p.types.map(t => 
-                `<span class="type-pill ${t.type.name}">${t.type.name}</span>`
-            ).join('');
+function render() {
+    const leftCont = document.getElementById('left-page-content');
+    const rightCont = document.getElementById('right-page-content');
+    const counterEl = document.getElementById('result-counter');
 
-            card.innerHTML = `
-                <div class="card-header">
-                    <span class="dex-id">#${p.id.toString().padStart(3, '0')}</span>
-                    <div class="check-group">
-                        <button class="master-btn ${isMaster ? 'active' : ''}" data-id="${p.id}" title="Alt Art/Rare Version">★</button>
-                        <input type="checkbox" class="catch-check" ${isCaught ? 'checked' : ''} data-id="${p.id}" title="Standard Caught">
+    let visibleCount = 0;
+
+    const processCard = (p) => {
+        const html = createCardHTML(p);
+        if (html !== "" && !html.includes('hidden-slot')) visibleCount++;
+        return html;
+    };
+
+    if (currentSpread === 1) {
+        leftCont.innerHTML = generateFullDashboardHTML();
+        const items = allPokemon.slice(0, perPage);
+        rightCont.innerHTML = items.map(p => processCard(p)).join('');
+        updatePageNumbers("Trainer Profile (Page 0)", "National Dex (Page 1)");
+    } 
+    else {
+        const offset = (currentSpread - 1) * perSpread - 9; 
+        const leftItems = allPokemon.slice(offset, offset + perPage);
+        const rightItems = allPokemon.slice(offset + perPage, offset + perSpread);
+
+        const leftHTML = leftItems.map(p => processCard(p)).join('');
+        const rightHTML = rightItems.map(p => processCard(p)).join('');
+
+        leftCont.innerHTML = `
+            ${generateMiniStatsHTML()}
+            <div class="grid-3x3">${leftHTML}</div>
+        `;
+        rightCont.innerHTML = rightHTML;
+        updatePageNumbers(`Page ${(currentSpread * 2) - 2}`, `Page ${(currentSpread * 2) - 1}`);
+    }
+
+    if (counterEl) counterEl.innerText = `Found ${visibleCount} in this spread`;
+    updateDashboardStats();
+    attachListeners();
+    updateUI();
+}
+
+// --- 5. DASHBOARD GENERATORS ---
+function generateFullDashboardHTML() {
+    return `
+        <div class="dashboard-container">
+            <div class="trainer-profile-header">
+                <div class="identity">
+                    <h2>Trainer: ${trainerName}</h2>
+                    <button onclick="renameTrainer()" class="edit-btn">✎ Edit Name</button>
+                </div>
+                <button onclick="handleLogout()" class="logout-link">Sign Out</button>
+            </div>
+            <div class="main-stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">Total Caught</span>
+                    <b class="stat-value"><span id="total-caught">0</span>/${TOTAL_COUNT}</b>
+                    <div class="progress-subtext" id="national-percent">0% Complete</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Total Art Rare+</span>
+                    <b class="stat-value gold-text"><span id="total-art-rare">0</span>/${TOTAL_COUNT}</b>
+                    <div class="progress-subtext" id="ar-percent">0% Complete</div>
+                </div>
+            </div>
+            <h3 class="section-subtitle">Regional Progress</h3>
+            <div id="gen-stats" class="gen-dashboard-grid"></div>
+        </div>
+    `;
+}
+
+function generateMiniStatsHTML() {
+    return `
+        <div class="mini-trainer-header">
+            <div class="mini-stats-upper">
+                <span class="mini-label"><strong>Dex Progress</strong></span>
+                <div class="mini-pills">
+                    <span class="mini-pill">C: <b id="total-caught-mini">0</b></span>
+                    <span class="mini-pill" style="margin-left:10px">AR+: <b id="total-art-rare-mini" class="gold-text">0</b></span>
+                </div>
+            </div>
+            <div id="gen-stats-mini" class="gen-mini-grid"></div>
+        </div>
+    `;
+}
+
+function updateDashboardStats() {
+    const caughtCount = caughtList.length;
+    const arCount = artRarePlusList.length;
+
+    ['total-caught', 'total-caught-mini', 'total-art-rare', 'total-art-rare-mini'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = id.includes('caught') ? caughtCount : arCount;
+    });
+
+    const gens = [
+        {n:"Gen 1",s:1,e:151},{n:"Gen 2",s:152,e:251},{n:"Gen 3",s:252,e:386},
+        {n:"Gen 4",s:387,e:493},{n:"Gen 5",s:494,e:649},{n:"Gen 6",s:650,e:721},
+        {n:"Gen 7",s:722,e:809},{n:"Gen 8",s:810,e:905},{n:"Gen 9",s:906,e:1025}
+    ];
+
+    if (document.getElementById('gen-stats')) {
+        document.getElementById('gen-stats').innerHTML = gens.map((g, i) => {
+            const c = caughtList.filter(id => id >= g.s && id <= g.e).length;
+            const arc = artRarePlusList.filter(id => id >= g.s && id <= g.e).length;
+            return `
+                <div class="gen-stat-tag" onclick="jumpToGen(${i+1})">
+                    <b>${g.n}</b>
+                    <div class="gen-row">Dex: ${c}/${g.e-g.s+1}</div>
+                    <div class="gen-row gold-text">AR+: ${arc}</div>
+                </div>`;
+        }).join('');
+    }
+
+    if (document.getElementById('gen-stats-mini')) {
+        document.getElementById('gen-stats-mini').innerHTML = gens.map((g, i) => {
+            const c = caughtList.filter(id => id >= g.s && id <= g.e).length;
+            const arc = artRarePlusList.filter(id => id >= g.s && id <= g.e).length;
+            return `
+                <div class="mini-gen-tag" onclick="jumpToGen(${i+1})">
+                    <b>G${i+1}</b>
+                    <span>${c}</span>
+                    <span class="mini-ar-val">✨${arc}</span>
+                </div>`;
+        }).join('');
+    }
+}
+
+// --- 7. CARD RENDERING ---
+function createCardHTML(p) {
+    if (!p) return `<div class="card empty"></div>`;
+
+    const term = document.getElementById('search-input').value.toLowerCase().trim();
+    const gen = document.getElementById('gen-filter').value;
+    const missingAR = document.getElementById('missing-rare-toggle').checked;
+    const caughtOnly = document.getElementById('caught-only-toggle').checked;
+    const arOnly = document.getElementById('ar-only-toggle').checked;
+    const ghostMode = document.getElementById('ghost-mode-toggle').checked;
+
+    const isCaught = caughtList.includes(p.id);
+    const isAR = artRarePlusList.includes(p.id);
+
+    const searchMatch = p.name.includes(term) || p.id.toString() === term || p.types.some(t => t.includes(term));
+
+    let genMatch = true;
+    if (gen !== "all") {
+        const g = parseInt(gen);
+        const ranges = [0, 151, 251, 386, 493, 649, 721, 809, 905, 1025];
+        genMatch = p.id > ranges[g-1] && p.id <= ranges[g];
+    }
+
+    let statusMatch = true;
+    if (missingAR) statusMatch = isCaught && !isAR;
+    else if (arOnly) statusMatch = isAR;
+    else if (caughtOnly) statusMatch = isCaught;
+
+    if (!(searchMatch && genMatch && statusMatch)) {
+        return ghostMode ? `<div class="card hidden-slot" style="visibility: hidden; pointer-events: none;"></div>` : ``; 
+    }
+
+    // --- RESTORE SHINY LOGIC ---
+    const sprite = isAR 
+        ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/${p.id}.png`
+        : `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png`;
+
+    return `
+        <div class="card ${isCaught ? 'caught' : ''} ${isAR ? 'art-rare-plus' : ''}">
+            <div class="card-header">
+                <span>#${p.id}</span>
+                <div class="check-group">
+                    <button class="art-rare-btn ${isAR ? 'active' : ''}" data-id="${p.id}">✨</button>
+                    <input type="checkbox" class="catch-check" ${isCaught ? 'checked' : ''} data-id="${p.id}">
+                </div>
+            </div>
+            <img src="${sprite}" loading="lazy">
+            <strong style="text-transform: capitalize;">${p.name}</strong>
+            <div class="type-container">${p.types.map(t => `<span class="type-badge ${t}">${t}</span>`).join('')}</div>
+        </div>
+    `;
+}
+
+// --- 8. SMART SUGGESTIONS ---
+function setupSearchSuggestions() {
+    const searchInput = document.getElementById('search-input');
+    const suggestionBox = document.getElementById('suggestion-box');
+
+    searchInput.addEventListener('input', (e) => {
+        const val = e.target.value.toLowerCase().trim();
+        if (val.length < 2) {
+            suggestionBox.style.display = 'none';
+            return;
+        }
+
+        const matches = allPokemon.filter(p => 
+            p.name.includes(val) || p.id.toString() === val || p.types.some(t => t.includes(val))
+        ).slice(0, 10);
+
+        if (matches.length > 0) {
+            suggestionBox.innerHTML = matches.map(p => `
+                <div class="suggestion-item" data-id="${p.id}">
+                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png">
+                    <div class="suggestion-info">
+                        <div class="suggestion-top-row">
+                            <b>${p.name}</b>
+                            <span class="suggestion-id">#${p.id}</span>
+                        </div>
+                        <div class="type-container" style="gap: 2px; margin-top: 2px;">
+                            ${p.types.map(t => `<span class="type-badge ${t}" style="font-size:0.5rem; padding: 1px 4px;">${t}</span>`).join('')}
+                        </div>
                     </div>
                 </div>
-                <img src="${p.sprites.front_default}" alt="${p.name}" loading="lazy">
-                <strong>${p.name.replace(/-/g, ' ')}</strong>
-                <div class="type-container">${typeLabels}</div>
-            `;
-            grid.appendChild(card);
-        });
+            `).join('');
+            suggestionBox.style.display = 'block';
 
-        attachListeners();
-        updateUI();
-    }
-
-    /**
-     * LISTENERS: Updates storage and UI classes
-     */
-    function attachListeners() {
-        // Standard Checklist
-        document.querySelectorAll('.catch-check').forEach(check => {
-            check.onchange = (e) => {
-                const id = parseInt(e.target.dataset.id);
-                if (e.target.checked) {
-                    if (!caughtList.includes(id)) caughtList.push(id);
-                } else {
-                    caughtList = caughtList.filter(item => item !== id);
-                }
-                saveAndRefresh();
-                e.target.closest('.card').classList.toggle('caught', e.target.checked);
-            };
-        });
-
-        // Rare Art (★) Tracker
-        document.querySelectorAll('.master-btn').forEach(btn => {
-            btn.onclick = (e) => {
-                const id = parseInt(e.target.dataset.id);
-                const isActive = e.target.classList.toggle('active');
-                if (isActive) {
-                    if (!masterList.includes(id)) masterList.push(id);
-                } else {
-                    masterList = masterList.filter(item => item !== id);
-                }
-                saveAndRefresh();
-                e.target.closest('.card').classList.toggle('master-tier', isActive);
-            };
-        });
-    }
-
-    function saveAndRefresh() {
-        localStorage.setItem('caughtPokemon', JSON.stringify(caughtList));
-        localStorage.setItem('masterPokemon', JSON.stringify(masterList));
-        updateCollectionDashboard();
-    }
-
-    /**
-     * DASHBOARD: Gen Stats + Clickable Missing/Rare Missing Filter
-     */
-    function updateCollectionDashboard() {
-        document.getElementById('total-caught').innerText = caughtList.length;
-        document.getElementById('total-master').innerText = masterList.length;
-        
-        const genRanges = {
-            "G1": [1, 151], "G2": [152, 251], "G3": [252, 386], "G4": [387, 493],
-            "G5": [494, 649], "G6": [650, 721], "G7": [722, 809], "G8": [810, 905], "G9": [906, 1025]
-        };
-
-        const dashboard = document.getElementById('gen-stats');
-        if (!dashboard) return;
-        dashboard.innerHTML = "";
-
-        for (const [gen, range] of Object.entries(genRanges)) {
-            const caughtInGen = caughtList.filter(id => id >= range[0] && id <= range[1]).length;
-            const masterInGen = masterList.filter(id => id >= range[0] && id <= range[1]).length;
-            const total = range[1] - range[0] + 1;
-            
-            const statBtn = document.createElement('button');
-            statBtn.className = 'gen-stat-tag clickable';
-            statBtn.innerHTML = `
-                <strong>${gen}</strong><br>
-                Base: ${caughtInGen}/${total}<br>
-                <span class="gold-text">★ ${masterInGen}</span>
-            `;
-            
-            statBtn.onclick = () => {
-                searchInput.value = ""; 
-                genFilter.value = gen.replace("G", ""); 
-                applyFilters(); // Triggers logic using the current toggle state
-            };
-            dashboard.appendChild(statBtn);
+            document.querySelectorAll('.suggestion-item').forEach(item => {
+                item.onclick = () => {
+                    const id = parseInt(item.dataset.id);
+                    jumpToId(id);
+                    suggestionBox.style.display = 'none';
+                    searchInput.value = "";
+                };
+            });
+        } else {
+            suggestionBox.style.display = 'none';
         }
-    }
+    });
+}
 
-    /**
-     * FILTER LOGIC: Name, Gen, Missing Base, or Missing Rare Art
-     */
-    function applyFilters() {
-        const term = searchInput.value.toLowerCase().trim();
-        const gen = genFilter.value;
-        const showMissingRare = rareToggle.checked;
-        
-        filteredIds = allPokemon.filter(p => {
-            const nameMatch = p.name.includes(term) || p.id.toString() === term;
-            
-            let genMatch = true;
-            if(gen === "1") genMatch = p.id <= 151;
-            else if(gen === "2") genMatch = p.id > 151 && p.id <= 251;
-            else if(gen === "3") genMatch = p.id > 251 && p.id <= 386;
-            else if(gen === "4") genMatch = p.id > 386 && p.id <= 493;
-            else if(gen === "5") genMatch = p.id > 493 && p.id <= 649;
-            else if(gen === "6") genMatch = p.id > 649 && p.id <= 721;
-            else if(gen === "7") genMatch = p.id > 721 && p.id <= 809;
-            else if(gen === "8") genMatch = p.id > 809 && p.id <= 905;
-            else if(gen === "9") genMatch = p.id > 905;
+// --- 9. NAVIGATION ---
+function jumpToId(id) {
+    const pageNum = Math.ceil(id / perPage);
+    currentSpread = Math.floor(pageNum / 2) + 1;
+    render();
+}
 
-            let missingMatch = true;
-            if (showMissingRare) {
-                // "Missing Rare" means you have the base card, but no Star (★)
-                missingMatch = caughtList.includes(p.id) && !masterList.includes(p.id);
-            } else {
-                // If we are coming from a Dashboard click, we might want "Missing Base"
-                // This logic triggers if the filter is specifically "searching" for gaps
-                // If standard view, missingMatch remains true.
-            }
+window.jumpToGen = (g) => {
+    const ranges = [1, 152, 252, 387, 494, 651, 722, 810, 907];
+    jumpToId(ranges[g-1]);
+};
 
-            return nameMatch && genMatch && missingMatch;
-        }).map(p => p.id);
-
-        if (filteredIds.length > 0) {
-            currentPage = Math.ceil(filteredIds[0] / perPage);
-        }
-        render();
-    }
-
-    /**
-     * NAVIGATION
-     */
-    function updateUI() {
-        const totalPages = Math.ceil(allPokemon.length / perPage);
-        pageInfo.innerText = `Page ${currentPage} of ${totalPages}`;
-        prevBtn.disabled = currentPage === 1;
-        nextBtn.disabled = currentPage >= totalPages;
-    }
-
-    nextBtn.onclick = () => { currentPage++; render(); window.scrollTo(0,0); };
-    prevBtn.onclick = () => { if(currentPage > 1) { currentPage--; render(); window.scrollTo(0,0); } };
-    skipBtn.onclick = () => {
-        const target = parseInt(skipInput.value);
-        if (target >= 1 && target <= Math.ceil(allPokemon.length / perPage)) {
-            currentPage = target; render(); skipInput.value = "";
+function attachListeners() {
+    document.getElementById('next-btn').onclick = () => { currentSpread++; render(); window.scrollTo(0,0); };
+    document.getElementById('prev-btn').onclick = () => { if (currentSpread > 1) { currentSpread--; render(); window.scrollTo(0,0); }};
+    document.getElementById('skip-btn').onclick = () => {
+        const pageNum = parseInt(document.getElementById('skip-input').value);
+        if (!isNaN(pageNum)) {
+            currentSpread = Math.floor(pageNum / 2) + 1;
+            render();
         }
     };
 
-    searchInput.oninput = applyFilters;
-    genFilter.onchange = applyFilters;
-    rareToggle.onchange = applyFilters;
+    document.querySelectorAll('.art-rare-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            const id = parseInt(e.currentTarget.dataset.id);
+            if (!artRarePlusList.includes(id)) {
+                artRarePlusList.push(id);
+                if (!caughtList.includes(id)) caughtList.push(id);
+            } else { 
+                artRarePlusList = artRarePlusList.filter(i => i !== id); 
+            }
+            sync(); render();
+        };
+    });
 
-    init();
+    document.querySelectorAll('.catch-check').forEach(check => {
+        check.onchange = (e) => {
+            const id = parseInt(e.target.dataset.id);
+            if (e.target.checked) { 
+                if (!caughtList.includes(id)) caughtList.push(id); 
+            } else { 
+                caughtList = caughtList.filter(i => i !== id); 
+                artRarePlusList = artRarePlusList.filter(i => i !== id); 
+            }
+            sync(); render();
+        };
+    });
+}
+
+function updatePageNumbers(l, r) {
+    document.getElementById('left-page-num').innerText = l;
+    document.getElementById('right-page-num').innerText = r;
+}
+
+function updateUI() {
+    const totalSpreads = Math.ceil((allPokemon.length + 9) / perSpread);
+    document.getElementById('prev-btn').disabled = currentSpread === 1;
+    document.getElementById('next-btn').disabled = currentSpread >= totalSpreads;
+}
+
+async function sync() {
+    if (!currentUser) return;
+    await setDoc(doc(db, "users", currentUser.uid), {
+        caughtList, artRarePlusList, trainerName
+    }, { merge: true });
+}
+
+window.renameTrainer = () => {
+    const n = prompt("Enter Trainer Name:", trainerName);
+    if (n) { trainerName = n; sync(); render(); }
+};
+
+document.getElementById('gen-filter').onchange = (e) => {
+    const g = e.target.value;
+    if(g === "all") { currentSpread = 1; render(); }
+    else { jumpToGen(parseInt(g)); }
+};
+
+document.getElementById('search-input').oninput = render;
+['missing-rare-toggle', 'caught-only-toggle', 'ar-only-toggle', 'ghost-mode-toggle'].forEach(id => {
+    document.getElementById(id).onchange = render;
 });
