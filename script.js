@@ -31,7 +31,6 @@ const provider = new GoogleAuthProvider();
 window.handleLogin = async () => {
     const loginBtn = document.querySelector('.login-btn');
     if(loginBtn) loginBtn.innerText = "Connecting...";
-    
     try {
         await signInWithPopup(auth, provider);
     } catch (error) {
@@ -51,11 +50,9 @@ window.continueAsGuest = () => {
 
 onAuthStateChanged(auth, async (user) => {
     const authModal = document.getElementById('auth-modal');
-    
     if (user) {
         currentUser = user;
         if(authModal) authModal.style.display = 'none';
-        
         const userDoc = await getDoc(doc(db, "users", user.uid));
         if (userDoc.exists()) {
             const data = userDoc.data();
@@ -75,9 +72,7 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 window.handleLogout = () => {
-    signOut(auth).then(() => {
-        location.reload();
-    });
+    signOut(auth).then(() => { location.reload(); });
 };
 
 // --- 4. CORE ENGINE ---
@@ -90,7 +85,6 @@ async function init() {
             name: p.name,
             types: [] 
         }));
-
         fetchAllTypesInOrder();
     }
     render();
@@ -105,59 +99,86 @@ async function fetchAllTypesInOrder() {
             try {
                 const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${poke.id}`);
                 const data = await res.json();
-                poke.types = data.types
-                    .sort((a, b) => a.slot - b.slot)
-                    .map(t => t.type.name);
-            } catch (e) {
-                console.error(`Failed types for #${poke.id}`);
-            }
+                poke.types = data.types.sort((a, b) => a.slot - b.slot).map(t => t.type.name);
+            } catch (e) { console.error(`Failed types for #${poke.id}`); }
         }));
         render(); 
     }
 }
 
+// --- 5. RENDER ENGINE (WITH REFLOW & NEW FILTER) ---
 function render() {
     const leftCont = document.getElementById('left-page-content');
     const rightCont = document.getElementById('right-page-content');
     const counterEl = document.getElementById('result-counter');
 
-    let visibleCount = 0;
+    const term = document.getElementById('search-input').value.toLowerCase().trim();
+    const gen = document.getElementById('gen-filter').value;
+    const missingAR = document.getElementById('missing-rare-toggle').checked;
+    const missingDex = document.getElementById('missing-dex-toggle').checked;
+    const caughtOnly = document.getElementById('caught-only-toggle').checked;
+    const arOnly = document.getElementById('ar-only-toggle').checked;
+    const ghostMode = document.getElementById('ghost-mode-toggle').checked;
 
-    const processCard = (p) => {
-        const html = createCardHTML(p);
-        if (html !== "" && !html.includes('hidden-slot')) visibleCount++;
-        return html;
-    };
+    const filteredResults = allPokemon.filter(p => {
+        const isCaught = caughtList.includes(p.id);
+        const isAR = artRarePlusList.includes(p.id);
+        const searchMatch = p.name.includes(term) || p.id.toString() === term || p.types.some(t => t.includes(term));
+        
+        let genMatch = true;
+        if (gen !== "all") {
+            const g = parseInt(gen);
+            const ranges = [0, 151, 251, 386, 493, 649, 721, 809, 905, 1025];
+            genMatch = p.id > ranges[g-1] && p.id <= ranges[g];
+        }
 
-    if (currentSpread === 1) {
-        leftCont.innerHTML = generateFullDashboardHTML();
-        const items = allPokemon.slice(0, perPage);
-        rightCont.innerHTML = items.map(p => processCard(p)).join('');
-        updatePageNumbers("Trainer Profile (Page 0)", "National Dex (Page 1)");
-    } 
-    else {
-        const offset = (currentSpread - 1) * perSpread - 9; 
-        const leftItems = allPokemon.slice(offset, offset + perPage);
-        const rightItems = allPokemon.slice(offset + perPage, offset + perSpread);
+        let statusMatch = true;
+        if (missingDex) statusMatch = !isCaught;
+        else if (missingAR) statusMatch = isCaught && !isAR;
+        else if (arOnly) statusMatch = isAR;
+        else if (caughtOnly) statusMatch = isCaught;
 
-        const leftHTML = leftItems.map(p => processCard(p)).join('');
-        const rightHTML = rightItems.map(p => processCard(p)).join('');
+        return searchMatch && genMatch && statusMatch;
+    });
 
-        leftCont.innerHTML = `
-            ${generateMiniStatsHTML()}
-            <div class="grid-3x3">${leftHTML}</div>
-        `;
-        rightCont.innerHTML = rightHTML;
-        updatePageNumbers(`Page ${(currentSpread * 2) - 2}`, `Page ${(currentSpread * 2) - 1}`);
+    if (counterEl) counterEl.innerText = `Found ${filteredResults.length} Pokémon`;
+
+    if (ghostMode) {
+        const offset = (currentSpread - 1) * perSpread - 9;
+        if (currentSpread === 1) {
+            leftCont.innerHTML = generateFullDashboardHTML();
+            const rightItems = allPokemon.slice(0, perPage);
+            rightCont.innerHTML = rightItems.map(p => filteredResults.includes(p) ? createCardHTML(p) : `<div class="card hidden-slot" style="visibility: hidden;"></div>`).join('');
+            updatePageNumbers("Trainer Profile", "National Dex P.1");
+        } else {
+            const leftItems = allPokemon.slice(offset, offset + perPage);
+            const rightItems = allPokemon.slice(offset + perPage, offset + perSpread);
+            leftCont.innerHTML = `${generateMiniStatsHTML()}<div class="grid-3x3">${leftItems.map(p => filteredResults.includes(p) ? createCardHTML(p) : `<div class="card hidden-slot" style="visibility: hidden;"></div>`).join('')}</div>`;
+            rightCont.innerHTML = rightItems.map(p => filteredResults.includes(p) ? createCardHTML(p) : `<div class="card hidden-slot" style="visibility: hidden;"></div>`).join('');
+            updatePageNumbers(`Page ${(currentSpread * 2) - 2}`, `Page ${(currentSpread * 2) - 1}`);
+        }
+    } else {
+        const flowOffset = (currentSpread - 1) * perSpread - 9;
+        if (currentSpread === 1) {
+            leftCont.innerHTML = generateFullDashboardHTML();
+            const rightItems = filteredResults.slice(0, perPage);
+            rightCont.innerHTML = rightItems.map(p => createCardHTML(p)).join('');
+            updatePageNumbers("Trainer Profile", "Results P.1");
+        } else {
+            const leftItems = filteredResults.slice(flowOffset, flowOffset + perPage);
+            const rightItems = filteredResults.slice(flowOffset + perPage, flowOffset + perSpread);
+            leftCont.innerHTML = `${generateMiniStatsHTML()}<div class="grid-3x3">${leftItems.map(p => createCardHTML(p)).join('')}</div>`;
+            rightCont.innerHTML = rightItems.map(p => createCardHTML(p)).join('');
+            updatePageNumbers(`Results P.${(currentSpread * 2) - 2}`, `Results P.${(currentSpread * 2) - 1}`);
+        }
     }
 
-    if (counterEl) counterEl.innerText = `Found ${visibleCount} in this spread`;
     updateDashboardStats();
     attachListeners();
-    updateUI();
+    updateUI(ghostMode ? allPokemon.length : filteredResults.length);
 }
 
-// --- 5. DASHBOARD GENERATORS ---
+// --- 6. DASHBOARD GENERATORS ---
 function generateFullDashboardHTML() {
     return `
         <div class="dashboard-container">
@@ -246,36 +267,8 @@ function updateDashboardStats() {
 // --- 7. CARD RENDERING ---
 function createCardHTML(p) {
     if (!p) return `<div class="card empty"></div>`;
-
-    const term = document.getElementById('search-input').value.toLowerCase().trim();
-    const gen = document.getElementById('gen-filter').value;
-    const missingAR = document.getElementById('missing-rare-toggle').checked;
-    const caughtOnly = document.getElementById('caught-only-toggle').checked;
-    const arOnly = document.getElementById('ar-only-toggle').checked;
-    const ghostMode = document.getElementById('ghost-mode-toggle').checked;
-
     const isCaught = caughtList.includes(p.id);
     const isAR = artRarePlusList.includes(p.id);
-
-    const searchMatch = p.name.includes(term) || p.id.toString() === term || p.types.some(t => t.includes(term));
-
-    let genMatch = true;
-    if (gen !== "all") {
-        const g = parseInt(gen);
-        const ranges = [0, 151, 251, 386, 493, 649, 721, 809, 905, 1025];
-        genMatch = p.id > ranges[g-1] && p.id <= ranges[g];
-    }
-
-    let statusMatch = true;
-    if (missingAR) statusMatch = isCaught && !isAR;
-    else if (arOnly) statusMatch = isAR;
-    else if (caughtOnly) statusMatch = isCaught;
-
-    if (!(searchMatch && genMatch && statusMatch)) {
-        return ghostMode ? `<div class="card hidden-slot" style="visibility: hidden; pointer-events: none;"></div>` : ``; 
-    }
-
-    // --- RESTORE SHINY LOGIC ---
     const sprite = isAR 
         ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/${p.id}.png`
         : `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${p.id}.png`;
@@ -303,10 +296,7 @@ function setupSearchSuggestions() {
 
     searchInput.addEventListener('input', (e) => {
         const val = e.target.value.toLowerCase().trim();
-        if (val.length < 2) {
-            suggestionBox.style.display = 'none';
-            return;
-        }
+        if (val.length < 2) { suggestionBox.style.display = 'none'; return; }
 
         const matches = allPokemon.filter(p => 
             p.name.includes(val) || p.id.toString() === val || p.types.some(t => t.includes(val))
@@ -331,28 +321,34 @@ function setupSearchSuggestions() {
 
             document.querySelectorAll('.suggestion-item').forEach(item => {
                 item.onclick = () => {
-                    const id = parseInt(item.dataset.id);
-                    jumpToId(id);
+                    jumpToId(parseInt(item.dataset.id));
                     suggestionBox.style.display = 'none';
                     searchInput.value = "";
                 };
             });
-        } else {
-            suggestionBox.style.display = 'none';
-        }
+        } else { suggestionBox.style.display = 'none'; }
     });
 }
 
 // --- 9. NAVIGATION ---
 function jumpToId(id) {
-    const pageNum = Math.ceil(id / perPage);
-    currentSpread = Math.floor(pageNum / 2) + 1;
+    const ghostMode = document.getElementById('ghost-mode-toggle').checked;
+    if (ghostMode) {
+        const pageNum = Math.ceil(id / perPage);
+        currentSpread = Math.floor(pageNum / 2) + 1;
+    } else {
+        // In Reflow mode, jump to the first page of the filtered results
+        currentSpread = 1;
+    }
     render();
 }
 
 window.jumpToGen = (g) => {
-    const ranges = [1, 152, 252, 387, 494, 651, 722, 810, 907];
-    jumpToId(ranges[g-1]);
+    // When clicking a Gen, we set the filter and reset to page 1
+    const genFilter = document.getElementById('gen-filter');
+    if (genFilter) genFilter.value = g.toString();
+    currentSpread = 1;
+    render();
 };
 
 function attachListeners() {
@@ -360,10 +356,7 @@ function attachListeners() {
     document.getElementById('prev-btn').onclick = () => { if (currentSpread > 1) { currentSpread--; render(); window.scrollTo(0,0); }};
     document.getElementById('skip-btn').onclick = () => {
         const pageNum = parseInt(document.getElementById('skip-input').value);
-        if (!isNaN(pageNum)) {
-            currentSpread = Math.floor(pageNum / 2) + 1;
-            render();
-        }
+        if (!isNaN(pageNum)) { currentSpread = Math.floor(pageNum / 2) + 1; render(); }
     };
 
     document.querySelectorAll('.art-rare-btn').forEach(btn => {
@@ -372,9 +365,7 @@ function attachListeners() {
             if (!artRarePlusList.includes(id)) {
                 artRarePlusList.push(id);
                 if (!caughtList.includes(id)) caughtList.push(id);
-            } else { 
-                artRarePlusList = artRarePlusList.filter(i => i !== id); 
-            }
+            } else { artRarePlusList = artRarePlusList.filter(i => i !== id); }
             sync(); render();
         };
     });
@@ -382,9 +373,8 @@ function attachListeners() {
     document.querySelectorAll('.catch-check').forEach(check => {
         check.onchange = (e) => {
             const id = parseInt(e.target.dataset.id);
-            if (e.target.checked) { 
-                if (!caughtList.includes(id)) caughtList.push(id); 
-            } else { 
+            if (e.target.checked) { if (!caughtList.includes(id)) caughtList.push(id); }
+            else { 
                 caughtList = caughtList.filter(i => i !== id); 
                 artRarePlusList = artRarePlusList.filter(i => i !== id); 
             }
@@ -398,10 +388,10 @@ function updatePageNumbers(l, r) {
     document.getElementById('right-page-num').innerText = r;
 }
 
-function updateUI() {
-    const totalSpreads = Math.ceil((allPokemon.length + 9) / perSpread);
+function updateUI(totalItems) {
+    const totalSpreads = Math.ceil((totalItems + 9) / perSpread);
     document.getElementById('prev-btn').disabled = currentSpread === 1;
-    document.getElementById('next-btn').disabled = currentSpread >= totalSpreads;
+    document.getElementById('next-btn').disabled = currentSpread >= totalSpreads || totalItems === 0;
 }
 
 async function sync() {
@@ -416,13 +406,21 @@ window.renameTrainer = () => {
     if (n) { trainerName = n; sync(); render(); }
 };
 
-document.getElementById('gen-filter').onchange = (e) => {
-    const g = e.target.value;
-    if(g === "all") { currentSpread = 1; render(); }
-    else { jumpToGen(parseInt(g)); }
+// --- 10. EVENT HANDLERS ---
+document.getElementById('gen-filter').onchange = () => {
+    currentSpread = 1; // Reset to page 1 when changing generation
+    render();
 };
 
-document.getElementById('search-input').oninput = render;
-['missing-rare-toggle', 'caught-only-toggle', 'ar-only-toggle', 'ghost-mode-toggle'].forEach(id => {
-    document.getElementById(id).onchange = render;
+document.getElementById('search-input').oninput = () => {
+    currentSpread = 1; // Reset to page 1 when typing
+    render();
+};
+
+['missing-rare-toggle', 'missing-dex-toggle', 'caught-only-toggle', 'ar-only-toggle', 'ghost-mode-toggle'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.onchange = () => {
+        currentSpread = 1; // Reset to page 1 when toggling filters
+        render();
+    };
 });
