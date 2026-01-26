@@ -63,10 +63,3 @@ Recognizing that many collectors use their phones while at trade events, PokeBin
 
 ---
 
-## ⚙️ Developer Setup (Optional)
-
-If you wish to fork this project and connect it to your own Firebase instance:
-
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/your-username/pokebinder.git](https://github.com/your-username/pokebinder.git)
