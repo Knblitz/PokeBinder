@@ -1,10 +1,14 @@
 # 🎴 PokeBinder | TCG National Dex Collector
 
+![Firebase](https://img.shields.io/badge/Firebase-039BE5?style=for-the-badge&logo=Firebase&logoColor=white)
+![JavaScript](https://img.shields.io/badge/javascript-%23323330.svg?style=for-the-badge&logo=javascript&logoColor=%23F7DF1E)
+![CSS3](https://img.shields.io/badge/css3-%231572B6.svg?style=for-the-badge&logo=css3&logoColor=white)
+
 > **"Built by a collector, for collectors."**
 
 I am currently collecting physical Pokémon TCG cards with the goal of completing a full National Dex. I couldn't find a tracker that matched my preference for a realistic 3x3 binder aesthetic—**so I built my own.**
 
-
+![PokeBinder Preview](preview.png)
 
 ## 🌐 Live Site
 **[Open PokeBinder Here](https://knblitz.github.io/PokeBinder/)** *(Sign in with Google to sync your collection across your desktop and mobile devices.)*
@@ -57,9 +61,11 @@ Recognizing that many collectors use their phones while at trade events, PokeBin
 
 ---
 
-## 🗺️ Roadmap & Future Enhancements
-- [ ] **Trading Mode:** Generate a "Needs/Haves" list to share with other collectors.
-- [ ] **Custom Skins:** Ability to change binder colors (Blue, Green, Premium Black).
-
----
-
+## 📂 Project Structure
+```text
+├── index.html          # Main application structure
+├── style.css           # Custom binder UI and animations
+├── script.js           # Core logic and Firebase integration
+├── PokeGym.png         # Custom application favicon
+├── preview.png         # Repository preview image
+└── README.md           # Documentation
