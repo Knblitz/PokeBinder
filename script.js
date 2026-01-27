@@ -149,7 +149,7 @@ function render() {
             leftCont.innerHTML = generateFullDashboardHTML();
             const rightItems = allPokemon.slice(0, perPage);
             rightCont.innerHTML = rightItems.map(p => filteredResults.includes(p) ? createCardHTML(p) : `<div class="card hidden-slot" style="visibility: hidden;"></div>`).join('');
-            updatePageNumbers("Trainer Profile", "National Dex P.1");
+            updatePageNumbers("Trainer Profile", "National Dex Page 1");
         } else {
             const leftItems = allPokemon.slice(offset, offset + perPage);
             const rightItems = allPokemon.slice(offset + perPage, offset + perSpread);

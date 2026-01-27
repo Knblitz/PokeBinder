@@ -71,23 +71,35 @@
                         </select>
                     </div>
 
-                    <div class="filter-row">
-                        <label class="toggle-label">
-                            <input type="checkbox" id="missing-dex-toggle"> <span>Missing Dex</span>
-                        </label>
-                        <label class="toggle-label">
-                            <input type="checkbox" id="missing-rare-toggle"> <span>Missing AR+</span>
-                        </label>
-                        <label class="toggle-label">
-                            <input type="checkbox" id="caught-only-toggle"> <span>Caught</span>
-                        </label>
-                        <label class="toggle-label">
-                            <input type="checkbox" id="ar-only-toggle"> <span>AR+ Only</span>
-                        </label>
-                        <label class="toggle-label">
-                            <input type="checkbox" id="ghost-mode-toggle" checked> <span>Ghost Mode</span>
-                        </label>
-                        <span id="result-counter"></span>
+                    <div class="filter-row filter-container">
+                        <div class="filter-item">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="missing-dex-toggle"> <span>Missing Dex</span>
+                            </label>
+                        </div>
+                        <div class="filter-item">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="missing-rare-toggle"> <span>Missing AR+</span>
+                            </label>
+                        </div>
+                        <div class="filter-item">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="caught-only-toggle"> <span>Caught</span>
+                            </label>
+                        </div>
+                        <div class="filter-item">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="ar-only-toggle"> <span>AR+ Only</span>
+                            </label>
+                        </div>
+                        <div class="filter-item">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="ghost-mode-toggle" checked> <span>Ghost Mode</span>
+                            </label>
+                        </div>
+                        <div class="filter-item" style="flex-grow: 1; display: flex; justify-content: flex-end; align-items: center;">
+                            <span id="result-counter"></span>
+                        </div>
                     </div>
                 </div>
 
